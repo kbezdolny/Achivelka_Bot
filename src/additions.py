@@ -4,6 +4,7 @@ import uuid
 import os
 import database as db
 from app_logger import logger
+from telebot import apihelper
 
 
 def isAdmin(bot, username, chat_id):
@@ -19,10 +20,22 @@ def isAdmin(bot, username, chat_id):
         return False
 
 
+def checkUserInGroup(bot, user_id, group_id):
+    try:
+        member = bot.get_chat_member(group_id, user_id)
+        if member.status in ['member', 'administrator', 'creator']:
+            return True
+        return False
+    except Exception as e:
+        print(e)
+        logger.error(f"Error checking user in group: {e}")
+        return False
+
+
 def saveImage(downloaded_file, file_extension):
     try:
         filename = f"{uuid.uuid4()}.{file_extension}"
-        dir_path = 'resources/achievements_images'
+        dir_path = '../resources/achievements_images'
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
         file_path = os.path.join(dir_path, filename)
@@ -110,7 +123,7 @@ def editTempData(filename, updated_data):
 
 def getAllRanks():
     try:
-        with open("resources/ranks.json", 'r', encoding='utf-8') as file:
+        with open("../resources/ranks.json", 'r', encoding='utf-8') as file:
             data = json.load(file)
             return data
 
@@ -131,12 +144,3 @@ def getRankByNumber(number: int or None):
         return data[str(lastKey)]
 
     return data[str(number)]
-
-
-def listGroups(message):
-    groups = db.getAllChats()
-    if not groups:
-        bot.send_message(message.chat.id, "Групи не знайдені.")
-        return
-
-    return groups

@@ -1,5 +1,6 @@
 from telebot import TeleBot, types
 from telebot import logger as tbLogger
+from typing import Final
 
 import logging
 import os
@@ -9,7 +10,10 @@ import database as db
 import re
 from exceptions.AchievementAlreadyExists import AchievementAlreadyExists
 
-TOKEN = os.getenv("bot_token")
+
+ALLOWED_GROUP_ID: Final[int] = int(os.getenv("allowed_group_id"))
+TOKEN: Final[str] = os.getenv("bot_token")
+
 bot = TeleBot(TOKEN)
 tbLogger.setLevel(logging.INFO)
 app_logger.createFileHandler()
@@ -17,105 +21,89 @@ app_logger.createFileHandler()
 
 @bot.message_handler(content_types=['new_chat_members'])
 def handle_new_member(message):
-    meBot = bot.get_me()
-    for newMember in message.new_chat_members:
-        if newMember.id == meBot.id:
-            groupId = message.chat.id
-            groupTitle = message.chat.title
-            db.addNewChat(groupId, groupTitle)
+    if message.chat.type not in ['group', 'supergroup']:
+        bot.leave_chat(message.chat.id)
+        return
+
+    if message.chat.id != ALLOWED_GROUP_ID:
+        print(f"Failed to connect to a new group with ID: {message.chat.id}")
+        bot.leave_chat(message.chat.id)
+        return
 
 
 @bot.message_handler(commands=['start', 'lobby'])
 def handle_menu(message):
-    if message.chat.type == 'private':
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
+        messageText = f"*Доброго дня, солдат! Бачу ти не зовсім розібрався)*\n\n"\
+                     f"Я той хто видаватиме тобі нашивки та підраховуватиму твій ранг. Можна сказати займаюсь буголтерією.\n"\
+                     f"\n🛠\n\n"\
+                     f"• *Щоб подивитися ранг /rank_look*\n"\
+                     f"• *Які є звання? /ranks*\n"\
+                     f"• *Як підвищити собі звання? /level_up*\n"\
+                     f"• *Щоб подивитися які у тебе є ачівки /achiev_show*\n"\
+                     f"• *Що таке ачівки?? OwO /what_it_is*\n"\
+                     f"• *Всі ачівки та як їх отримати? /look_achiev*\n"\
+                     f"• *Щоб звернутися в меню /lobby*\n"\
+                     f"\n🛠\n\n"\
+
+        if additions.isAdmin(bot, message.from_user.username, ALLOWED_GROUP_ID):
+            messageText += f"Для адмінів\n"\
+                           f"• *Щоб створити нову ачвіку:\n/create_achiev Текст ачівки*\n"\
+                           f"• *Щоб додати ачвіку користовачу:\n/add_achiev @username*\n"\
+                           f"• *Відправити повідомлення від імені бота:\n/send_message Текст вашого повідомлення*\n"\
+                           f"\n🛠\n\n"
+
+        messageText += f"_Якщо у вас виникли проблеми, обов'язково звертайтеся до нашої адміністрації та ми обов'язково вирішимо цю проблему!_"
         bot.send_message(message.chat.id,
-                         f"*Доброго дня, солдат! Бачу ти не зовсім розібрався)*\n\n"
-                         f"Я той хто видаватиме тобі нашивки та підраховуватиму твій ранг. Можна сказати займаюсь буголтерією.\n"
-                         f"\n🛠\n\n"
-                         f"• *Щоб подивитися ранг /rank_look*\n"
-                         f"• *Які є звання? /ranks*\n"
-                         f"• *Як підвищити собі звання? /level_up*\n"
-                         f"• *Щоб подивитися які у тебе є ачівки /achiev_show*\n"
-                         f"• *Що таке ачівки?? OwO /what_it_is*\n"
-                         f"• *Всі ачівки та як їх отримати? /look_achiev*\n"
-                         f"• *Щоб звернутися в меню /lobby*\n"
-                         f"\n🛠\n\n"
-                         f"Для адмінів\n"
-                         f"• *Щоб створити нову ачвіку:\n/create_achiev Текст ачівки*\n"
-                         f"• *Щоб додати ачвіку користовачу:\n/add_achiev @username*\n"
-                         f"\n🛠\n\n"
-                         f"_Якщо у вас виникли проблеми, обов'язково звертайтеся до нашої адміністрації та ми обов'язково вирішимо цю проблему!_",
+                         messageText,
                          parse_mode='Markdown')
 
 
-@bot.message_handler(commands=['create_achiev'])
-def handle_create_achievement(message):
-    if message.chat.type == 'private':
+@bot.message_handler(commands=['send_message'])
+def handle_send_message(message):
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
         parts = message.text.split(maxsplit=1)
         if len(parts) != 2:
             bot.reply_to(message, "*Щоб створити нову ачвіку:\n/create_achiev Текст ачівки*", parse_mode='Markdown')
             return
 
         command, achievement_name = parts
-        groups = additions.listGroups(message)
-        tmpUrl = additions.saveTempData({"achievement_name": achievement_name})
-        groupsTemp = {"groups": {}}
-        markup = types.InlineKeyboardMarkup()
-        for index, group in enumerate(groups):
-            button_text = group[2]
-            callback_data = f"create_achiev:{tmpUrl}:{index}"
-            groupsTemp["groups"].update({
-                str(index): {
-                    "id": group[1]
-                }
-            })
-            markup.add(types.InlineKeyboardButton(text=button_text, callback_data=callback_data))
-
-        additions.editTempData(tmpUrl, groupsTemp)
-        bot.send_message(message.chat.id, "Оберіть групу:", reply_markup=markup)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('create_achiev'))
-def handle_create_achiev_selection(call):
-    _, tmpUrl, groupIndex = call.data.split(":")
+@bot.message_handler(commands=['create_achiev'])
+def handle_create_achievement(message):
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
+        parts = message.text.split(maxsplit=1)
+        if len(parts) != 2:
+            bot.reply_to(message, "*Щоб створити нову ачвіку:\n/create_achiev Текст ачівки*", parse_mode='Markdown')
+            return
 
-    tmpData = additions.loadTempData(tmpUrl)
-    additions.deleteTempData(tmpUrl)
-    if not tmpData:
-        print("tmpData is null")
-        return
+        command, achievement_name = parts
+        username = message.from_user.username
+        if not additions.isAdmin(bot, username, ALLOWED_GROUP_ID):
+            bot.send_message(chat_id=message.chat.id,
+                             text=f"*Ви не маєте права на виконання цієї операції!*",
+                             parse_mode='Markdown',
+                             reply_markup=None)
+            return
 
-    chat_id = tmpData["groups"][groupIndex]["id"]
-    username = call.from_user.username
-    achievement_name = tmpData["achievement_name"]
-    if not additions.isAdmin(bot, username, chat_id):
-        bot.answer_callback_query(call.id, f"Ви не маєте права на виконання цієї операції!")
-        bot.edit_message_text(chat_id=call.message.chat.id,
-                              message_id=call.message.message_id,
-                              text=f"*Ви не маєте права на виконання цієї операції!*",
-                              parse_mode='Markdown',
-                              reply_markup=None)
-        return
+        achievement_exists = db.checkAchievementExists(achievement_name)
+        if achievement_exists:
+            bot.send_message(
+                chat_id=message.chat.id,
+                text=f"Така ачівка вже існує",
+                parse_mode='Markdown',
+                reply_markup=None
+            )
+            return
 
-    achievement_exists = db.checkAchievementExists(achievement_name)
-    if achievement_exists:
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.id,
-            text=f"Така ачівка вже існує",
+        bot.send_message(
+            chat_id=message.chat.id,
+            text=f"Ачівки не існує. Будь ласка, надішліть зображення для ачівки або введіть `скасувати`",
             parse_mode='Markdown',
             reply_markup=None
         )
-        return
-
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        message_id=call.message.id,
-        text=f"Ачівки не існує. Будь ласка, надішліть зображення для ачівки або введіть `скасувати`",
-        parse_mode='Markdown',
-        reply_markup=None
-    )
-    bot.register_next_step_handler(call.message, processAchievementImage, achievement_name=achievement_name)
+        bot.register_next_step_handler(message, processAchievementImage, achievement_name=achievement_name)
 
 
 def processAchievementImage(message, achievement_name):
@@ -148,82 +136,51 @@ def processAchievementImage(message, achievement_name):
 
 @bot.message_handler(commands=['add_achiev'])
 def handle_add_achievement(message):
-    if message.chat.type == 'private':
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
         match = re.match(r'/add_achiev\s+@(\w+)', message.text)
         if match is None:
-            bot.reply_to(message, "Приклад використання: /add_achiev @username")
+            bot.reply_to(message,
+                         "*Приклад використання:\n/add_achiev @username*",
+                         parse_mode='Markdown')
             return
 
-        username = match.group(1)
-        groups = additions.listGroups(message)
+        if not additions.isAdmin(bot, message.from_user.username, ALLOWED_GROUP_ID):
+            bot.send_message(chat_id=message.chat.id,
+                             text=f"*Ви не маєте права на виконання цієї операції!*",
+                             parse_mode='Markdown')
+            return
 
+        achievements = db.getAllAchievements()
+        if len(achievements) <= 0:
+            bot.send_message(chat_id=message.chat.id,
+                             text=f"*Наразі ще створено жодної ачівки!*\n\n"
+                                  f"_Щоб створити нову ачвіку:_\n"
+                                  f"*/create_achiev Текст ачівки*",
+                             parse_mode='Markdown')
+            return
+
+        tmpUrl = additions.saveTempData({"username": match.group(1)})
         markup = types.InlineKeyboardMarkup()
-        tmpUrl = additions.saveTempData({"username": username})
-        groupsTemp = {"groups": {}}
-        for index, group in enumerate(groups):
-            button_text = group[2]
-            callback_data = f"select_group:{tmpUrl}:{index}"
-            groupsTemp["groups"].update({
+        achievementsTemp = {}
+        for index, achievement in enumerate(achievements):
+            button_text = achievement[0]
+            textLen = 13
+            if len(button_text) > textLen:
+                button_text = f"{button_text[:textLen]}..."
+            callback_data = f"select_achiev:{tmpUrl}:{index}"
+            achievementsTemp.update({
                 str(index): {
-                    "id": group[1]
+                    "id": achievement[1],
+                    "name": achievement[0],
+                    "image_name": achievement[2]
                 }
             })
             markup.add(types.InlineKeyboardButton(text=button_text, callback_data=callback_data))
 
-        additions.editTempData(tmpUrl, groupsTemp)
-        bot.send_message(message.chat.id, "Оберіть групу:", reply_markup=markup)
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('select_group'))
-def handle_group_selection(call):
-    _, tmpUrl, groupIndex = call.data.split(":")
-
-    tmpData = additions.loadTempData(tmpUrl)
-    if not tmpData:
-        print("tmpData is null")
-        return
-
-    chat_id = tmpData["groups"][groupIndex]["id"]
-    if not additions.isAdmin(bot, call.from_user.username, chat_id):
-        additions.deleteTempData(tmpUrl)
-        bot.edit_message_text(chat_id=call.message.chat.id,
-                              message_id=call.message.message_id,
-                              text=f"*Ви не маєте права на виконання цієї операції!*",
-                              parse_mode='Markdown')
-        return
-
-    markup = types.InlineKeyboardMarkup()
-    achievements = db.getAllAchievements()
-
-    if len(achievements) <= 0:
-        additions.deleteTempData(tmpUrl)
-        bot.edit_message_text(chat_id=call.message.chat.id,
-                              message_id=call.message.message_id,
-                              text=f"*Наразі ще створено жодної ачівки!*\n\n"
-                                   f"_Щоб створити нову ачвіку:_\n"
-                                   f"*/create_achiev Текст ачівки*",
-                              parse_mode='Markdown')
-        return
-
-    achievementsTemp = {}
-    for index, achievement in enumerate(achievements):
-        button_text = achievement[0]
-        textLen = 13
-        if len(button_text) > textLen:
-            button_text = f"{button_text[:textLen]}..."
-        callback_data = f"select_achiev:{tmpUrl}:{index}"
-        achievementsTemp.update({
-            str(index): {
-                "id": achievement[1],
-                "name": achievement[0],
-                "image_name": achievement[2]
-            }
-        })
-        markup.add(types.InlineKeyboardButton(text=button_text, callback_data=callback_data))
-
-    additions.editTempData(tmpUrl, {"achievements": achievementsTemp})
-    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id,
-                          text="Оберіть ачівку:", reply_markup=markup)
+        additions.editTempData(tmpUrl, {"achievements": achievementsTemp})
+        bot.send_message(chat_id=message.chat.id,
+                         text="Оберіть ачівку:",
+                         reply_markup=markup)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('select_achiev'))
@@ -242,7 +199,7 @@ def handle_achiev_selection(call):
         db.addAchievement(username, achievement["id"])
     except AchievementAlreadyExists as e:
         bot.edit_message_text(chat_id=call.message.chat.id,
-                              message_id=call.message.message_id,
+                              message_id=call.message.id,
                               text=f"Така ачівка вже додана @{username}")
         return
 
@@ -251,10 +208,10 @@ def handle_achiev_selection(call):
                           text=f"Ачівка додана *@{username}*",
                           parse_mode='Markdown')
 
-    dir_path = 'resources/achievements_images'
+    dir_path = '../resources/achievements_images'
     file_path = os.path.join(dir_path, achievement["image_name"])
     with open(file_path, 'rb') as openedPhoto:
-        bot.send_photo(chat_id=tmpData["group"], photo=openedPhoto,
+        bot.send_photo(chat_id=ALLOWED_GROUP_ID, photo=openedPhoto,
                        caption=f"<b>@{username}</b>\n\n{achievement['name']}",
                        parse_mode='html')
     return
@@ -262,7 +219,7 @@ def handle_achiev_selection(call):
 
 @bot.message_handler(commands=['rank_look'])
 def handle_get_rank(message):
-    if message.chat.type == 'private':
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
         rank = db.getMyRank(message.from_user.username.replace("@", ""))
         bot.send_message(message.chat.id,
                          f"🦾\n\n"
@@ -275,7 +232,7 @@ def handle_get_rank(message):
 
 @bot.message_handler(commands=['ranks'])
 def handle_ranks(message):
-    if message.chat.type == 'private':
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
         ranks = additions.getAllRanks()
         messageText = "🔥\n\n"
         messageText += "\n\n⬇️\n\n".join(map(lambda rank: f"*{rank}*", ranks.values()))
@@ -286,7 +243,7 @@ def handle_ranks(message):
 
 @bot.message_handler(commands=['achiev_show'])
 def handle_get_achievements(message):
-    if message.chat.type == 'private':
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
         achievements = db.getMyAchievements(message.from_user.username.replace("@", ""))
         if not achievements:
             bot.send_message(message.chat.id,
@@ -300,7 +257,7 @@ def handle_get_achievements(message):
         for achievement in achievements:
             name, image_name = achievement
             achievementsList += f"\n\n• *{name}*"
-            photo = open(os.path.join('resources\\achievements_images', image_name), 'rb')
+            photo = open(os.path.join('..\\resources\\achievements_images', image_name), 'rb')
             media_group.append(types.InputMediaPhoto(photo))
 
             if len(media_group) == 10 or achievement == achievements[-1]:
@@ -314,7 +271,7 @@ def handle_get_achievements(message):
 
 @bot.message_handler(commands=['what_it_is'])
 def handle_what_it_is(message):
-    if message.chat.type == 'private':
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
         bot.send_message(message.chat.id,
                          f"👁\n\n"
                          f"*Що таке ачівки? Це маленькі ачівки та за деяку кількість яких ви можете отримати нагороду та підвищити ранг⬆️*\n"
@@ -325,7 +282,7 @@ def handle_what_it_is(message):
 
 @bot.message_handler(commands=['level_up'])
 def handle_level_up(message):
-    if message.chat.type == 'private':
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
         bot.send_message(message.chat.id,
                          f"🤔\n\n"
                          f"*Звання можна підвищити за допомогою ачівок які видаються за дії 🤟*"
@@ -336,7 +293,7 @@ def handle_level_up(message):
 
 @bot.message_handler(commands=['look_achiev'])
 def handle_look_achiev(message):
-    if message.chat.type == 'private':
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
         achievements = db.getAllAchievements()
         messageText = "🐾\n\n_Всі ачівки і як їх отримати!_\n\n🐾\n\n"
         for achievement in achievements:

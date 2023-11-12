@@ -34,20 +34,12 @@ def createDatabase():
         )
     ''')
 
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS groups (
-            group_id INTEGER PRIMARY KEY,
-            chat_id TEXT,
-            chat_title TEXT
-        )
-    ''')
-
     connection.commit()
     connection.close()
 
 
 def createConnection():
-    dbPath = "resources/botDb.db"
+    dbPath = "../resources/botDb.db"
     if not os.path.exists("resources"):
         os.makedirs("resources")
 
@@ -57,47 +49,6 @@ def createConnection():
     except sqlite3.Error as e:
         logger.error(f"Error connecting to database: {e}")
         return None
-
-
-def addNewChat(chat_id, chat_title):
-    connection = createConnection()
-    if not connection:
-        return
-
-    cursor = connection.cursor()
-    cursor.execute('SELECT group_id FROM groups WHERE chat_id = ?', (chat_id,))
-    chat_row = cursor.fetchone()
-
-    if chat_row is None:
-        cursor.execute('INSERT INTO groups (chat_id, chat_title) VALUES (?, ?)', (chat_id, chat_title))
-
-    connection.commit()
-    connection.close()
-    logger.info(f'Bot was added to group with ID: {chat_id}, Title: {chat_title}')
-
-
-def getChatId(group_id):
-    connection = createConnection()
-    if not connection:
-        return
-
-    cursor = connection.cursor()
-    cursor.execute('SELECT chat_id FROM groups WHERE group_id = ?', (group_id,))
-    row = cursor.fetchone()
-    connection.close()
-    return row[0] if row else None
-
-
-def getAllChats():
-    connection = createConnection()
-    if not connection:
-        return
-
-    cursor = connection.cursor()
-    cursor.execute('SELECT * FROM groups')
-    rows = cursor.fetchall()
-    connection.close()
-    return rows
 
 
 def checkAchievementExists(achievement_name):
