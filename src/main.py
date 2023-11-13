@@ -30,6 +30,8 @@ def handle_new_member(message):
         bot.leave_chat(message.chat.id)
         return
 
+    print(f"Success connected to a new group with ID: {message.chat.id}")
+
 
 @bot.message_handler(commands=['start', 'lobby'])
 def handle_menu(message):
@@ -57,17 +59,6 @@ def handle_menu(message):
         bot.send_message(message.chat.id,
                          messageText,
                          parse_mode='Markdown')
-
-
-@bot.message_handler(commands=['send_message'])
-def handle_send_message(message):
-    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
-        parts = message.text.split(maxsplit=1)
-        if len(parts) != 2:
-            bot.reply_to(message, "*Щоб створити нову ачвіку:\n/create_achiev Текст ачівки*", parse_mode='Markdown')
-            return
-
-        command, achievement_name = parts
 
 
 @bot.message_handler(commands=['create_achiev'])
