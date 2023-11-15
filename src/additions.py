@@ -32,6 +32,29 @@ def checkUserInGroup(bot, user_id, group_id):
         return False
 
 
+def createRanks():
+    filePath = "../resources/ranks.json"
+    data = {
+        "0": "Солдат",
+        "1": "Старший солдат",
+        "2": "Сержант",
+        "3": "Старший сержант",
+        "4": "Прапорщик",
+        "5": "Старший прапорщик",
+        "6": "Лейтенант",
+        "7": "Старший лейтенант",
+        "8": "Майор",
+        "9": "Подполковник",
+        "10": "Полковник"
+    }
+    if not os.path.exists(filePath):
+        with open(filePath, 'w') as file:
+            json.dump(data, file)
+        logger.info(f"The file '{filePath}' has been created")
+        return
+    logger.info(f"The file '{filePath}' already exists")
+
+
 def saveImage(downloaded_file, file_extension):
     try:
         filename = f"{uuid.uuid4()}.{file_extension}"
@@ -49,6 +72,17 @@ def saveImage(downloaded_file, file_extension):
     except Exception as e:
         logger.error(f"Error saving image: {e}")
         return None
+
+
+def deleteImage(image_name):
+    dir_path = '../resources/achievements_images'
+    file_path = os.path.join(dir_path, image_name)
+    if os.path.isfile(file_path):
+        os.remove(file_path)
+        logger.info(f"Image file {image_name} has been deleted.")
+        return
+
+    logger.info(f"No image file found for {image_name}.")
 
 
 def saveTempData(data):

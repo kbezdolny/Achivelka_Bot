@@ -17,6 +17,7 @@ TOKEN: Final[str] = os.getenv("bot_token")
 bot = TeleBot(TOKEN)
 tbLogger.setLevel(logging.INFO)
 app_logger.createFileHandler()
+additions.createRanks()
 
 
 @bot.message_handler(content_types=['new_chat_members'])
@@ -50,9 +51,9 @@ def handle_menu(message):
 
         if additions.isAdmin(bot, message.from_user.username, ALLOWED_GROUP_ID):
             messageText += f"Для адмінів\n"\
-                           f"• *Щоб створити нову ачвіку:\n/create_achiev Текст ачівки*\n"\
-                           f"• *Щоб додати ачвіку користовачу:\n/add_achiev @username*\n"\
-                           f"• *Відправити повідомлення від імені бота:\n/send_message Текст вашого повідомлення*\n"\
+                           f"• *Щоб створити нову ачівку:\n/create_achiev Текст ачівки*\n"\
+                           f"• *Щоб додати ачівку користовачу:\n/add_achiev @username*\n"\
+                           f"• *Щоб видалити ачівку:\n/delete_achiev*\n"\
                            f"\n🛠\n\n"
 
         messageText += f"_Якщо у вас виникли проблеми, обов'язково звертайтеся до нашої адміністрації та ми обов'язково вирішимо цю проблему!_"
@@ -205,6 +206,73 @@ def handle_achiev_selection(call):
         bot.send_photo(chat_id=ALLOWED_GROUP_ID, photo=openedPhoto,
                        caption=f"<b>@{username}</b>\n\n{achievement['name']}",
                        parse_mode='html')
+    return
+
+
+@bot.message_handler(commands=['delete_achiev'])
+def handle_add_achievement(message):
+    if message.chat.type == 'private' and additions.checkUserInGroup(bot, message.from_user.id, ALLOWED_GROUP_ID):
+        if not additions.isAdmin(bot, message.from_user.username, ALLOWED_GROUP_ID):
+            bot.send_message(chat_id=message.chat.id,
+                             text=f"*Ви не маєте права на виконання цієї операції!*",
+                             parse_mode='Markdown')
+            return
+
+        achievements = db.getAllAchievements()
+        if len(achievements) <= 0:
+            bot.send_message(chat_id=message.chat.id,
+                             text=f"*Наразі ще створено жодної ачівки!*\n\n"
+                                  f"_Щоб створити нову ачвіку:_\n"
+                                  f"*/create_achiev Текст ачівки*",
+                             parse_mode='Markdown')
+            return
+
+        tmpUrl = additions.saveTempData({})
+        markup = types.InlineKeyboardMarkup()
+        achievementsTemp = {}
+        for index, achievement in enumerate(achievements):
+            button_text = achievement[0]
+            textLen = 13
+            if len(button_text) > textLen:
+                button_text = f"{button_text[:textLen]}..."
+            callback_data = f"delete_achiev:{tmpUrl}:{index}"
+            achievementsTemp.update({
+                str(index): {
+                    "id": achievement[1],
+                    "name": achievement[0],
+                    "image_name": achievement[2]
+                }
+            })
+            markup.add(types.InlineKeyboardButton(text=button_text, callback_data=callback_data))
+
+        additions.editTempData(tmpUrl, {"achievements": achievementsTemp})
+        bot.send_message(chat_id=message.chat.id,
+                         text="Оберіть ачівку:",
+                         reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_achiev'))
+def handle_achiev_selection(call):
+    _, tmpUrl, achievementIndex = call.data.split(":")
+
+    tmpData = additions.loadTempData(tmpUrl)
+    additions.deleteTempData(tmpUrl)
+    if not tmpData:
+        print("tmpData is null")
+        return
+
+    achievement = tmpData["achievements"][achievementIndex]
+    try:
+        db.deleteAchievement(achievement["id"])
+    except Exception as e:
+        print(e)
+        return
+
+    additions.deleteImage(achievement["image_name"])
+    bot.edit_message_text(chat_id=call.message.chat.id,
+                          message_id=call.message.message_id,
+                          text=f"*Ачівку видалено*",
+                          parse_mode='Markdown')
     return
 
 

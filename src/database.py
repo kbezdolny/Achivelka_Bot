@@ -102,6 +102,26 @@ def addAchievement(username, achievement_id):
     logger.info(f"Added a new achievement to the user: @{username}")
 
 
+def deleteAchievement(achievement_id):
+    connection = createConnection()
+    if not connection:
+        return
+
+    cursor = connection.cursor()
+    cursor.execute('SELECT * FROM achievements WHERE achievement_id = ?', (achievement_id,))
+    if cursor.fetchone():
+        cursor.execute('DELETE FROM user_achievements WHERE achievement_id = ?', (achievement_id,))
+        cursor.execute('DELETE FROM achievements WHERE achievement_id = ?', (achievement_id,))
+        connection.commit()
+
+        logger.info(f"Achievement has been deleted.")
+    else:
+        logger.info(f"No achievement found with ID {achievement_id}.")
+
+    connection.close()
+
+
+
 def getMyAchievements(username):
     connection = createConnection()
     if not connection:
